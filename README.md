@@ -1,6 +1,6 @@
 # Kurlew Data Pipeline
 
-A Ktor-inspired, multi-phase data processing pipeline for resilient data handling with natural backpressure and comprehensive error handling.
+A Ktor-inspired, multi-phase data processing pipeline with proper subject/context separation, built-in session management, distributed tracing, and natural backpressure.
 
 [![Kotlin](https://img.shields.io/badge/kotlin-1.9.22-blue.svg?logo=kotlin)](http://kotlinlang.org)
 [![Ktor](https://img.shields.io/badge/ktor-2.3.7-orange.svg)](https://ktor.io)
@@ -8,13 +8,16 @@ A Ktor-inspired, multi-phase data processing pipeline for resilient data handlin
 
 ## Features
 
-✅ **Phase-Based Architecture**: Five mandatory phases (Acquire, Monitoring, Features, Process, Fallback)  
+✅ **Proper Subject/Context Separation**: DataEvent (what) vs DataContext (how)  
+✅ **Built-in Session Management**: Track state across multiple events  
+✅ **Service Registry**: Dependency injection for shared services  
+✅ **Distributed Tracing**: Automatic correlation ID generation  
+✅ **Source Tracking**: HTTP, WebSocket, Kafka, File, Database, Custom  
+✅ **Built-in Caching**: Thread-safe cache with TTL support  
 ✅ **Natural Backpressure**: Automatic flow control via coroutine suspension  
-✅ **Built-in Resilience**: Comprehensive error handling with dead-letter queue support  
-✅ **Thread Safety**: Immutable input data with contextual isolation  
+✅ **Phase-Based Architecture**: Five mandatory phases  
 ✅ **High Performance**: >100K events/sec throughput, <1ms base overhead  
-✅ **Ktor Integration**: Extends proven Ktor Pipeline infrastructure  
-✅ **Easy to Use**: High-level extension functions for common patterns
+✅ **Ktor Integration**: Perfect alignment with Ktor's Pipeline design
 
 ## Quick Start
 
@@ -24,7 +27,7 @@ Add to your `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("io.kurlew:data-pipeline:0.1.0")
+    implementation("io.kurlew:data-pipeline:0.2.0")
 }
 ```
 
@@ -36,23 +39,29 @@ val pipeline = DataPipeline()
 // Monitoring with error handling
 pipeline.monitoringWrapper()
 
-// Validation
-pipeline.validate { event ->
+// Validation with context access
+pipeline.validate { event, context ->
     event.incomingData is String && event.incomingData.isNotEmpty()
 }
 
-// Processing
-pipeline.process { event ->
-    database.save(event.incomingData)
+// Processing with service access
+pipeline.process { event, context ->
+    val db = context.services.getByType<Database>()
+    db?.save(event.incomingData)
 }
 
-// Error handling
-pipeline.onFailure { event ->
-    deadLetterQueue.send(event)
+// Error handling with context
+pipeline.onFailure { event, context ->
+    logger.error("Failed ${context.correlationId}: ${event.getError()}")
 }
 
-// Execute
-pipeline.execute(DataEvent(userData))
+// Execute with context
+val context = pipeline.contextBuilder()
+    .correlationId("req-123")
+    .service("database", database)
+    .build()
+
+pipeline.execute(DataEvent(userData), context)
 ```
 
 ## Architecture
@@ -136,11 +145,11 @@ val pipeline = DataPipeline()
 
 pipeline.monitoringWrapper()
 pipeline.validate { event -> event.incomingData is UserData }
-pipeline.process { event -> 
+pipeline.process { event ->
     val user = event.incomingData as UserData
     database.save(user)
 }
-pipeline.onFailure { event -> 
+pipeline.onFailure { event ->
     logger.error("Failed: ${event.getError()}")
 }
 
@@ -179,7 +188,7 @@ pipeline.validate { event -> event.incomingData is OrderData }
 pipeline.intercept(DataPipelinePhases.Process) {
     var attempt = 0
     val maxAttempts = 3
-    
+
     while (attempt < maxAttempts) {
         try {
             database.save(subject.incomingData)

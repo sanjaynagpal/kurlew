@@ -11,16 +11,41 @@ This document specifies the Kotlin implementation of a Ktor-inspired, multi-phas
 
 ### 2.1 Core Components
 
-The implementation consists of four primary components that work together to provide a complete data processing solution:
+The implementation consists of six primary components that work together to provide a complete data processing solution:
 
 | Component | Type | Purpose |
 |-----------|------|---------|
-| `DataEvent` | Data Class | The subject and context that flows through the pipeline |
+| `DataEvent` | Data Class (TSubject) | The data being processed |
+| `DataContext` | Data Class (TContext) | The execution environment |
 | `DataPipeline` | Class extending Ktor's Pipeline | Main pipeline orchestrator |
 | `DataPipelinePhases` | Object | Defines the five mandatory phases |
+| `SourceContext` | Sealed Class | Tracks event origin |
 | Extension Functions | Kotlin Extensions | Convenience methods for common patterns |
 
-### 2.2 Dependency on Ktor
+### 2.2 Subject vs Context Separation
+
+**Critical Architectural Principle**: The pipeline separates "what" (DataEvent) from "how" (DataContext).
+
+```kotlin
+class DataPipeline : Pipeline<DataEvent, DataContext>(
+    Acquire, Monitoring, Features, Process, Fallback
+)
+```
+
+**DataEvent (TSubject)**: The data being processed
+- Contains incoming data (immutable)
+- Contains outgoing enrichment (mutable)
+- Represents a single unit of work
+
+**DataContext (TContext)**: The execution environment
+- Correlation ID for tracing
+- Source context (HTTP, WebSocket, Kafka, etc.)
+- Session management
+- Shared cache
+- Service registry
+- Custom attributes
+
+### 2.3 Dependency on Ktor
 
 The implementation directly uses the following Ktor classes from `io.ktor.util.pipeline`:
 
@@ -29,11 +54,15 @@ The implementation directly uses the following Ktor classes from `io.ktor.util.p
 - **PipelineContext<TSubject, TContext>**: Execution context for interceptors
 - **PipelineInterceptor<TSubject, TContext>**: Type alias for interceptor functions
 
-```kotlin
-class DataPipeline : Pipeline<DataEvent, DataEvent>(
-    Acquire, Monitoring, Features, Process, Fallback
-)
-```
+This architecture now aligns perfectly with Ktor's HTTP pipeline:
+
+| Ktor HTTP | Data Pipeline |
+|-----------|---------------|
+| `Pipeline<Unit, ApplicationCall>` | `Pipeline<DataEvent, DataContext>` |
+| `ApplicationCall` | `DataContext` |
+| `call.request` | `event.incomingData` |
+| `call.response` | `event.outgoingData` |
+| `call.attributes` | `context.attributes` |
 
 ## 3. DataEvent Specification
 
@@ -294,8 +323,8 @@ Adds monitoring with error handling to Monitoring phase.
 
 ```kotlin
 fun DataPipeline.monitoringWrapper(
-    onError: (DataEvent, Throwable) -> Unit = { event, error ->
-        event.markFailed(error.message)
+    onError: (DataEvent, Throwable) -> Unit = { event, error -> 
+        event.markFailed(error.message) 
     },
     onSuccess: (DataEvent) -> Unit = {},
     block: suspend PipelineContext<DataEvent, DataEvent>.() -> Unit = {}
@@ -346,7 +375,7 @@ The pipeline uses Kotlin coroutines for asynchronous execution:
 
 ```kotlin
 class DataPipeline(
-    override val coroutineContext: CoroutineContext =
+    override val coroutineContext: CoroutineContext = 
         Dispatchers.Default + SupervisorJob()
 ) : Pipeline<DataEvent, DataEvent>(...), CoroutineScope
 ```
@@ -538,7 +567,7 @@ dependencies {
 - [x] Integration tests
 - [x] Usage examples (Simple, WebSocket, Persistence)
 - [x] Documentation (specification.md, design.md)
-- [ ] Performance benchmarks
+- [x] Performance benchmarks
 - [ ] CI/CD pipeline
 - [ ] Release artifacts
 
