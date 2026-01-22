@@ -9,51 +9,142 @@ import io.kurlew.pipeline.DataPipelinePhases.Process
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * A Ktor-inspired, multi-phase data processing pipeline for resilient data handling.
+ * A Ktor-inspired, multi-phase data processing pipeline with proper context separation.
  *
- * The DataPipeline extends Ktor's Pipeline class to provide a structured, sequential,
- * and extensible framework for processing DataEvent objects. It enforces a strict
- * five-phase lifecycle: Acquire → Monitoring → Features → Process → Fallback.
+ * Key architectural change from previous version:
+ * - DataEvent is the subject (TSubject) - what is being processed
+ * - DataContext is the context (TContext) - how to process it
  *
- * Key architectural principles:
- * - Phase-Based Sequential Execution: Predictable, ordered processing
- * - Contextual Isolation: Each DataEvent is a unique instance (thread-safe)
- * - Immutable Core, Mutable State: incomingData is immutable, outgoingData is mutable
- * - Built-in Resilience: Monitoring and Fallback phases handle all failures
+ * This separation allows:
+ * - Session management across events
+ * - Shared cache and services
+ * - Source context tracking
+ * - Distributed tracing via correlation IDs
+ * - Better testability and separation of concerns
  *
- * @see DataEvent The context object that flows through the pipeline
- * @see DataPipelinePhases The five mandatory phases
+ * Implements CoroutineScope to provide proper lifecycle management and
+ * structured concurrency for pipeline execution.
+ *
+ * @param parentContext Optional parent coroutine context. If not provided,
+ *        creates a new context with Dispatchers.Default and SupervisorJob.
+ *
+ * @see DataEvent The data being processed
+ * @see DataContext The execution environment
  */
-class DataPipeline (
-    override val coroutineContext: CoroutineContext = Dispatchers.Default + SupervisorJob()
-) : Pipeline<DataEvent, DataEvent>(Acquire, Monitoring, Features, Process, Fallback),
+class DataPipeline(
+    parentContext: CoroutineContext? = null
+) : Pipeline<DataEvent, DataContext>(Acquire, Monitoring, Features, Process, Fallback),
     CoroutineScope {
 
     /**
-     * Executes the pipeline for a given DataEvent.
+     * The coroutine context for this pipeline.
+     * Uses provided parent context or creates default with Dispatchers.Default + SupervisorJob.
+     */
+    override val coroutineContext: CoroutineContext =
+        parentContext ?: (Dispatchers.Default + SupervisorJob())
+
+    /**
+     * Executes the pipeline for a given event with a context.
      *
-     * This is the primary entry point for processing. The event will flow through
-     * all configured interceptors in phase order unless short-circuited by finish().
+     * If the context doesn't have a coroutine context set, uses the pipeline's context.
      *
      * @param event The DataEvent to process
-     * @return The processed DataEvent (with enriched outgoingData)
+     * @param context The DataContext providing execution environment
+     * @return The processed DataEvent
      */
-    suspend fun execute(event: DataEvent): DataEvent {
-        execute(event, event)
+    suspend fun execute(event: DataEvent, context: DataContext): DataEvent {
+        // Use context's coroutineContext if set, otherwise use pipeline's
+        val executionContext = if (context.coroutineContext == EmptyCoroutineContext) {
+            context.copy(coroutineContext = coroutineContext)
+        } else {
+            context
+        }
+
+        execute(executionContext, event)
         return event
     }
 
     /**
-     * Convenience method to execute the pipeline with raw data.
-     * Creates a DataEvent wrapper automatically.
+     * Executes the pipeline with a new default context.
+     * Creates a DataContext using the pipeline's coroutine context.
      *
-     * @param rawData The raw data to process
+     * @param event The DataEvent to process
      * @return The processed DataEvent
      */
-    suspend fun executeRaw(rawData: Any): DataEvent {
-        return execute(DataEvent(rawData))
+    suspend fun execute(event: DataEvent): DataEvent {
+        val context = DataContext(coroutineContext = coroutineContext)
+        return execute(event, context)
+    }
+
+    /**
+     * Executes the pipeline with raw data, creating a DataEvent wrapper.
+     *
+     * @param rawData The raw data to process
+     * @param context Optional DataContext
+     * @return The processed DataEvent
+     */
+    suspend fun executeRaw(rawData: Any, context: DataContext? = null): DataEvent {
+        val event = DataEvent(rawData)
+        val ctx = context ?: DataContext(coroutineContext = coroutineContext)
+        return execute(event, ctx)
+    }
+
+    /**
+     * Creates a new context builder for fluent API.
+     * The builder will use the pipeline's coroutine context by default.
+     */
+    fun contextBuilder(): DataContextBuilder {
+        return DataContextBuilder(coroutineContext)
+    }
+
+    /**
+     * Cancels the pipeline and all its operations.
+     * Calls cancel on the underlying coroutine scope.
+     */
+    fun cancel(cause: CancellationException? = null) {
+        coroutineContext.cancel(cause)
+    }
+
+    /**
+     * Checks if the pipeline is active (not cancelled).
+     */
+    val isActive: Boolean
+        get() = coroutineContext.isActive
+}
+
+/**
+ * Builder for DataContext to provide fluent API.
+ */
+class DataContextBuilder(
+    private var coroutineContext: CoroutineContext
+) {
+    private var correlationId: String? = null
+    private var source: SourceContext? = null
+    private var session: SessionContext? = null
+    private val services = ServiceRegistry()
+    private val attributes = mutableMapOf<String, Any>()
+
+    fun correlationId(id: String) = apply { this.correlationId = id }
+    fun source(sourceContext: SourceContext) = apply { this.source = sourceContext }
+    fun session(sessionContext: SessionContext) = apply { this.session = sessionContext }
+    fun service(name: String, service: Any) = apply { this.services.register(name, service) }
+    fun attribute(key: String, value: Any) = apply { this.attributes[key] = value }
+
+    fun build(): DataContext {
+        return DataContext(
+            correlationId = correlationId ?: "corr-${System.currentTimeMillis()}",
+            source = source,
+            session = session,
+            services = services,
+            attributes = attributes,
+            coroutineContext = coroutineContext
+        )
     }
 }

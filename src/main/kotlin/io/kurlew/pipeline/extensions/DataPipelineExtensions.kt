@@ -1,11 +1,10 @@
 package io.kurlew.pipeline.extensions
 
+import io.ktor.util.pipeline.*
+import io.kurlew.pipeline.DataContext
 import io.kurlew.pipeline.DataEvent
 import io.kurlew.pipeline.DataPipeline
 import io.kurlew.pipeline.DataPipelinePhases
-import io.ktor.util.pipeline.PipelineContext
-import io.ktor.util.pipeline.PipelineInterceptor
-import kotlin.time.Duration
 import kotlin.time.measureTime
 
 /**
@@ -23,13 +22,14 @@ import kotlin.time.measureTime
  *     println("Processing started")
  * }
  * ```
+ * The context parameter provides access to correlation ID, cache, services, etc.
  */
 fun DataPipeline.monitoringWrapper(
-    onError: (DataEvent, Throwable) -> Unit = { event, error ->
+    onError: (DataEvent, DataContext, Throwable) -> Unit = { event, _, error ->
         event.markFailed(error.message)
     },
-    onSuccess: (DataEvent) -> Unit = {},
-    block: suspend PipelineContext<DataEvent, DataEvent>.() -> Unit = {}
+    onSuccess: (DataEvent, DataContext) -> Unit = { _, _ -> },
+    block: suspend PipelineContext<DataEvent, DataContext>.() -> Unit = {}
 ) {
     intercept(DataPipelinePhases.Monitoring) {
         block()
@@ -37,14 +37,17 @@ fun DataPipeline.monitoringWrapper(
         val duration = measureTime {
             try {
                 proceed()
-                onSuccess(subject)
+                onSuccess(subject, context)
             } catch (e: Exception) {
-                onError(subject, e)
+                // Record error in both event and context
+                onError(subject, context, e)
+                context.setAttribute("lastError", e)
                 proceed() // Let Fallback handle it
             }
         }
 
         subject.enrich("processingDuration", duration)
+        context.setAttribute("processingDuration", duration)
     }
 }
 
@@ -64,15 +67,16 @@ fun DataPipeline.monitoringWrapper(
  */
 fun DataPipeline.validate(
     errorMessage: String = "Validation failed",
-    predicate: (DataEvent) -> Boolean
+    predicate: (DataEvent, DataContext) -> Boolean
 ) {
     intercept(DataPipelinePhases.Features) {
-        if (!predicate(subject)) {
+        if (!predicate(subject, context)) {
             subject.markFailed(errorMessage)
+            context.setAttribute("validationFailed", true)
             // Don't call finish() - allow event to proceed to Fallback
-            // This ensures proper error handling and DLQ operations
         } else {
             subject.enrich("validated", true)
+            context.setAttribute("validated", true)
         }
         proceed()
     }
@@ -88,10 +92,10 @@ fun DataPipeline.validate(
  * ```
  */
 fun DataPipeline.enrich(
-    enricher: (DataEvent) -> Unit
+    enricher: suspend (DataEvent, DataContext) -> Unit
 ) {
     intercept(DataPipelinePhases.Features) {
-        enricher(subject)
+        enricher(subject, context)
         proceed()
     }
 }
@@ -102,18 +106,22 @@ fun DataPipeline.enrich(
  *
  * Example:
  * ```
- * pipeline.process { event ->
- *     database.save(event.incomingData)
+ * pipeline.process { event, context ->
+ *     val db = context.services.getByType<Database>()
+ *     db?.save(event.incomingData)
+ *
+ *     // Use correlation ID for tracing
+ *     logger.info("Processed ${context.correlationId}")
  * }
  * ```
  */
 fun DataPipeline.process(
-    processor: suspend (DataEvent) -> Unit
+    processor: suspend (DataEvent, DataContext) -> Unit
 ) {
     intercept(DataPipelinePhases.Process) {
         // Only process if not already failed
         if (!subject.isFailed()) {
-            processor(subject)
+            processor(subject, context)
         }
         proceed()
     }
@@ -131,11 +139,11 @@ fun DataPipeline.process(
  * ```
  */
 fun DataPipeline.onFailure(
-    handler: suspend (DataEvent) -> Unit
+    handler: suspend (DataEvent, DataContext) -> Unit
 ) {
     intercept(DataPipelinePhases.Fallback) {
         if (subject.isFailed()) {
-            handler(subject)
+            handler(subject, context)
         }
         // No proceed() - this is terminal
     }
@@ -153,48 +161,172 @@ fun DataPipeline.onFailure(
  * ```
  */
 fun DataPipeline.onSuccess(
-    handler: suspend (DataEvent) -> Unit
+    handler: suspend (DataEvent, DataContext) -> Unit
 ) {
     intercept(DataPipelinePhases.Fallback) {
         if (!subject.isFailed()) {
-            handler(subject)
+            handler(subject, context)
         }
         // No proceed() - this is terminal
     }
 }
 
 /**
- * Creates a retry interceptor for the Process phase.
- * Retries the downstream processing up to maxAttempts times.
+ * Adds caching interceptor to Features phase.
+ * Checks cache before processing, stores result after.
  *
  * Example:
  * ```
- * pipeline.retry(maxAttempts = 3) {
- *     // Processing logic that might fail
+ * pipeline.withCache(
+ *     keyProvider = { event -> "user:${event.incomingData}" },
+ *     ttlMs = 60_000 // 1 minute
+ * )
+ * ```
+ */
+fun DataPipeline.withCache(
+    keyProvider: (DataEvent) -> String,
+    ttlMs: Long? = null
+) {
+    intercept(DataPipelinePhases.Features) {
+        val cacheKey = keyProvider(subject)
+
+        // Try to get from cache
+        val cached = context.cache.get(cacheKey)
+        if (cached != null) {
+            subject.enrich("fromCache", true)
+            subject.enrich("cachedData", cached)
+            context.setAttribute("cacheHit", true)
+            // Continue processing with cached data available
+        } else {
+            context.setAttribute("cacheHit", false)
+        }
+
+        proceed()
+
+        // After processing, cache the result if successful
+        if (!subject.isFailed() && cached == null) {
+            subject.outgoingData["result"]?.let { result ->
+                context.cache.put(cacheKey, result, ttlMs)
+            }
+        }
+    }
+}
+
+/**
+ * Adds session tracking to the pipeline.
+ *
+ * Example:
+ * ```
+ * pipeline.withSession { event ->
+ *     // Extract session ID from event
+ *     (event.incomingData as? UserRequest)?.sessionId
  * }
  * ```
  */
-fun DataPipeline.retry(
+fun DataPipeline.withSession(
+    sessionIdProvider: (DataEvent) -> String?
+) {
+    intercept(DataPipelinePhases.Features) {
+        val sessionId = sessionIdProvider(subject)
+        if (sessionId != null) {
+            // Session is already in context or create new one
+            context.session?.let { session ->
+                session.touch()
+                subject.enrich("sessionId", session.sessionId)
+            }
+        }
+        proceed()
+    }
+}
+
+/**
+ * Adds distributed tracing support.
+ *
+ * Automatically propagates correlation ID and adds tracing metadata.
+ */
+fun DataPipeline.withTracing(
+    tracingService: TracingService? = null
+) {
+    intercept(DataPipelinePhases.Monitoring) {
+        val traceId = context.correlationId
+
+        subject.enrich("traceId", traceId)
+        subject.enrich("timestamp", System.currentTimeMillis())
+
+        // Add source information if available
+        context.source?.let { source ->
+            subject.enrich("source", source.toString())
+        }
+
+        tracingService?.startSpan(traceId, "pipeline.execute")
+
+        try {
+            proceed()
+            tracingService?.endSpan(traceId, success = !subject.isFailed())
+        } catch (e: Exception) {
+            tracingService?.recordError(traceId, e)
+            throw e
+        }
+    }
+}
+
+/**
+ * Adds retry logic with exponential backoff.
+ *
+ * Uses context to track retry attempts and share state.
+ */
+fun DataPipeline.withRetry(
     maxAttempts: Int = 3,
-    delay: Duration = Duration.ZERO,
-    processor: PipelineInterceptor<DataEvent, DataEvent>
+    initialDelayMs: Long = 100,
+    maxDelayMs: Long = 5000,
+    retryOn: (Throwable) -> Boolean = { true }
 ) {
     intercept(DataPipelinePhases.Process) {
+        var attempt = 0
+        var delay = initialDelayMs
         var lastError: Throwable? = null
 
-        repeat(maxAttempts) { attempt ->
+        while (attempt < maxAttempts) {
+            attempt++
+            context.setAttribute("retryAttempt", attempt)
+
             try {
-                processor(this, subject)
+                proceed()
                 return@intercept // Success
             } catch (e: Exception) {
                 lastError = e
-                if (attempt < maxAttempts - 1 && delay.isPositive()) {
-                    kotlinx.coroutines.delay(delay)
+
+                if (!retryOn(e) || attempt >= maxAttempts) {
+                    throw e
                 }
+
+                // Exponential backoff
+                kotlinx.coroutines.delay(delay)
+                delay = minOf(delay * 2, maxDelayMs)
             }
         }
 
-        // All attempts failed
         throw lastError ?: IllegalStateException("Retry failed")
     }
 }
+
+/**
+ * Simple tracing service interface.
+ */
+interface TracingService {
+    fun startSpan(traceId: String, operationName: String)
+    fun endSpan(traceId: String, success: Boolean)
+    fun recordError(traceId: String, error: Throwable)
+}
+
+/**
+ * Extension to access the current event in interceptor.
+ */
+val PipelineContext<DataEvent, DataContext>.event: DataEvent
+    get() = subject
+
+/**
+ * Extension to access the current context in interceptor.
+ */
+val PipelineContext<DataEvent, DataContext>.ctx: DataContext
+    get() = context

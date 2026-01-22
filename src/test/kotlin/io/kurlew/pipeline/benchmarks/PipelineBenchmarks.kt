@@ -82,16 +82,16 @@ class PipelineBenchmarks {
 
         pipeline.monitoringWrapper()
 
-        pipeline.validate { event ->
+        pipeline.validate { event, _ ->
             event.incomingData is String
         }
 
-        pipeline.enrich { event ->
+        pipeline.enrich { event, _ ->
             event.enrich("timestamp", System.currentTimeMillis())
             event.enrich("processed", true)
         }
 
-        pipeline.process { event ->
+        pipeline.process { event, _ ->
             // Simulate light processing
             val data = event.incomingData as String
             event.enrich("length", data.length)
@@ -131,14 +131,14 @@ class PipelineBenchmarks {
 
         // Pipeline with validation that fails
         val fastPipeline = DataPipeline()
-        fastPipeline.validate { event -> false } // Always fails
-        fastPipeline.process {
+        fastPipeline.validate { _, _ -> false } // Always fails
+        fastPipeline.process {_, _ ->
             delay(10) // Expensive operation
         }
 
         // Pipeline without validation (runs expensive op)
         val slowPipeline = DataPipeline()
-        slowPipeline.process {
+        slowPipeline.process { _, _ ->
             delay(10) // Expensive operation
         }
 
@@ -184,8 +184,8 @@ class PipelineBenchmarks {
         val processedCount = java.util.concurrent.atomic.AtomicInteger(0)
 
         pipeline.monitoringWrapper()
-        pipeline.validate { event -> event.incomingData is String }
-        pipeline.process { event ->
+        pipeline.validate { event, _ -> event.incomingData is String }
+        pipeline.process { event, _ ->
             delay(1) // Simulate I/O
             processedCount.incrementAndGet()
         }
@@ -229,11 +229,11 @@ class PipelineBenchmarks {
         val pipeline = DataPipeline()
 
         pipeline.monitoringWrapper()
-        pipeline.validate { event -> event.incomingData is String }
-        pipeline.enrich { event ->
+        pipeline.validate { event, _ -> event.incomingData is String }
+        pipeline.enrich { event, _ ->
             event.enrich("timestamp", System.currentTimeMillis())
         }
-        pipeline.process { event ->
+        pipeline.process { event, _ ->
             // Simulate variable processing time
             val delay = (Math.random() * 5).toLong()
             delay(delay)
@@ -285,17 +285,17 @@ class PipelineBenchmarks {
         // Pipeline with successful processing
         val successPipeline = DataPipeline()
         successPipeline.monitoringWrapper()
-        successPipeline.process { event ->
+        successPipeline.process { event, _ ->
             event.enrich("result", "success")
         }
 
         // Pipeline with failing processing
         val errorPipeline = DataPipeline()
         errorPipeline.monitoringWrapper()
-        errorPipeline.process { event ->
+        errorPipeline.process { event, _ ->
             throw IllegalStateException("Simulated error")
         }
-        errorPipeline.onFailure { } // Handle errors
+        errorPipeline.onFailure {_,_ -> } // Handle errors
 
         // Warmup
         repeat(100) {
@@ -338,12 +338,12 @@ class PipelineBenchmarks {
 
         val pipeline = DataPipeline()
         pipeline.monitoringWrapper()
-        pipeline.validate { true }
-        pipeline.enrich { event ->
+        pipeline.validate {_, _ -> true }
+        pipeline.enrich { event, _ ->
             event.enrich("key1", "value1")
             event.enrich("key2", "value2")
         }
-        pipeline.process { event ->
+        pipeline.process { event, _ ->
             event.enrich("result", "done")
         }
 
@@ -390,7 +390,7 @@ class PipelineBenchmarks {
         val processedCount = java.util.concurrent.atomic.AtomicInteger(0)
 
         pipeline.monitoringWrapper()
-        pipeline.process { event ->
+        pipeline.process { event, _ ->
             // Simulate slow consumer
             delay(10)
             processedCount.incrementAndGet()
@@ -489,17 +489,17 @@ class PipelineBenchmarks {
 
         // Pipeline with no enrichment
         val noEnrichment = DataPipeline()
-        noEnrichment.process { }
+        noEnrichment.process {_, _ -> }
 
         // Pipeline with light enrichment
         val lightEnrichment = DataPipeline()
-        lightEnrichment.enrich { event ->
+        lightEnrichment.enrich { event, _ ->
             event.enrich("key1", "value1")
         }
 
         // Pipeline with heavy enrichment
         val heavyEnrichment = DataPipeline()
-        heavyEnrichment.enrich { event ->
+        heavyEnrichment.enrich { event, _ ->
             repeat(20) { i ->
                 event.enrich("key$i", "value$i")
             }

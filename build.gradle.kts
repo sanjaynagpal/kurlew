@@ -41,18 +41,18 @@ tasks.test {
     )
 
     // Separate benchmark tests
-    if (project.hasProperty("benchmark")) {
-        include("**/benchmarks/**")
-
-        // More time for benchmarks
-        testLogging {
-            events("passed", "skipped", "failed")
-            showStandardStreams = true
-        }
-    } else {
-        // Exclude benchmarks from regular test runs
-        exclude("**/benchmarks/**")
-    }
+//    if (project.hasProperty("benchmark")) {
+//        include("**/benchmarks/**")
+//
+//        // More time for benchmarks
+//        testLogging {
+//            events("passed", "skipped", "failed")
+//            showStandardStreams = true
+//        }
+//    } else {
+//        // Exclude benchmarks from regular test runs
+//        exclude("**/benchmarks/**")
+//    }
 }
 
 // Task to run only benchmarks

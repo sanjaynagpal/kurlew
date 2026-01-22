@@ -27,11 +27,11 @@ fun main() = runBlocking {
     // === Phase 2: Monitoring ===
     // Add monitoring with error handling
     pipeline.monitoringWrapper(
-        onError = { event, error ->
+        onError = { event, _, error ->
             println("[Monitoring] Received registration request")
             event.markFailed(error.message)
         },
-        onSuccess = { event ->
+        onSuccess = { event, _ ->
             println("[Monitoring] Received registration request: $event")
         }
     ) {
@@ -39,13 +39,13 @@ fun main() = runBlocking {
     }
 
     // === Phase 3: Features ===
-    pipeline.validate("Invalid user data") { event ->
+    pipeline.validate("Invalid user data") { event, _ ->
         val userData = event.incomingData as? UserRegistration
         userData != null && userData.email.contains("@") && userData.age > 18
     }
 
     // Enrich with additional data
-    pipeline.enrich { event ->
+    pipeline.enrich { event, _ ->
         println("[Features] Validating and enriching data")
         event.enrich("timestamp", System.currentTimeMillis())
         event.enrich("source", "registration-api")
@@ -53,7 +53,7 @@ fun main() = runBlocking {
 
     // === Phase 4: Process ===
     // Execute the main business logic
-    pipeline.process { event ->
+    pipeline.process { event, _ ->
         println("[Process] Saving user to database")
         val user = event.incomingData as UserRegistration
 
@@ -65,14 +65,14 @@ fun main() = runBlocking {
 
     // === Phase 5: Fallback ===
     // Handle failures
-    pipeline.onFailure { event ->
+    pipeline.onFailure { event, _ ->
         println("[Fallback] Event failed: ${event.getError()}")
         println("  - Saving to dead-letter queue")
         // In real scenarios, save to DLQ
         logFailedEvent(event)
     }
     // Handle successes
-    pipeline.onSuccess { event ->
+    pipeline.onSuccess { event, _ ->
         println("[Fallback] Event processed successfully")
         val userId = event.get<String>("userId")
         println("  - User ID: $userId")

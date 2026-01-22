@@ -17,7 +17,7 @@ class MonitoringPhaseTest {
         var errorCaught = false
 
         pipeline.monitoringWrapper(
-            onError = { event, error ->
+            onError = { event, _, error ->
                 errorCaught = true
                 event.markFailed(error.message)
             }
@@ -41,7 +41,7 @@ class MonitoringPhaseTest {
         var fallbackExecuted = false
 
         pipeline.monitoringWrapper(
-            onError = { event, error ->
+            onError = { event, _, error ->
                 event.markFailed(error.message)
             }
         )

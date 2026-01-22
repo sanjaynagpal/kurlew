@@ -19,7 +19,7 @@ class EndToEndPipelineTest {
         pipeline.monitoringWrapper()
 
         // Validation
-        pipeline.validate { event ->
+        pipeline.validate { event, _ ->
             event.incomingData is UserRequest
         }
 
@@ -35,18 +35,18 @@ class EndToEndPipelineTest {
         }
 
         // Processing
-        pipeline.process { event ->
+        pipeline.process { event, _ ->
             val request = event.incomingData as UserRequest
             processedRequests.add(request)
             event.enrich("processedAt", System.currentTimeMillis())
         }
 
         // Success/Failure handlers
-        pipeline.onSuccess { event ->
+        pipeline.onSuccess { event, _ ->
             event.enrich("status", "completed")
         }
 
-        pipeline.onFailure { event ->
+        pipeline.onFailure { event, _ ->
             event.enrich("status", "failed")
         }
 
@@ -77,12 +77,12 @@ class EndToEndPipelineTest {
             proceed()
         }
 
-        pipeline.process { event ->
+        pipeline.process { event, _ ->
             // This check is now inside the process extension
             processedRequests.add(event.incomingData as UserRequest)
         }
 
-        pipeline.onFailure { event ->
+        pipeline.onFailure { event, _ ->
             failedRequests.add(event)
         }
 
@@ -102,11 +102,11 @@ class EndToEndPipelineTest {
 
         pipeline.monitoringWrapper()
 
-        pipeline.process { _ ->
+        pipeline.process { _, _ ->
             throw IllegalStateException("Database connection failed")
         }
 
-        pipeline.onFailure { event ->
+        pipeline.onFailure { event, _ ->
             failedRequests.add(event)
         }
 

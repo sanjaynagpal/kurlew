@@ -41,7 +41,7 @@ fun createResilientPipeline(): DataPipeline {
 
     // Monitoring with detailed error tracking
     pipeline.monitoringWrapper(
-        onError = { event, error ->
+        onError = { event, _, error ->
             println("[Monitoring] Caught exception: ${error.message}")
             event.markFailed(error.message)
             event.enrich("errorType", error::class.simpleName ?: "Unknown")
@@ -50,7 +50,7 @@ fun createResilientPipeline(): DataPipeline {
     )
 
     // Validation
-    pipeline.validate { event ->
+    pipeline.validate { event, _ ->
         val order = event.incomingData as? OrderData
         order != null && order.amount > 0
     }
@@ -93,7 +93,7 @@ fun createResilientPipeline(): DataPipeline {
     }
 
     // Fallback - Dead Letter Queue
-    pipeline.onFailure { event ->
+    pipeline.onFailure { event, _ ->
         println("[Fallback] Adding failed event to DLQ")
         deadLetterQueue.add(event)
 
@@ -104,7 +104,7 @@ fun createResilientPipeline(): DataPipeline {
         println("  - DLQ Size: ${deadLetterQueue.size}")
     }
 
-    pipeline.onSuccess { event ->
+    pipeline.onSuccess { event, _ ->
         val order = event.incomingData as OrderData
         val attempts = event.get<Int>("attempts") ?: 1
         println("[Fallback] Order ${order.orderId} successfully processed after $attempts attempt(s)")

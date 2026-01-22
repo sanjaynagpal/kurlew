@@ -33,7 +33,7 @@ fun createStreamingPipeline(): DataPipeline {
 
     // Monitoring with timing
     pipeline.monitoringWrapper(
-        onError = { event, error ->
+        onError = { event, _, error ->
             println("[Error] Failed to process message: ${error.message}")
             event.markFailed(error.message)
         }
@@ -43,20 +43,20 @@ fun createStreamingPipeline(): DataPipeline {
     }
 
     // Validation - filter out invalid messages early
-    pipeline.validate { event ->
+    pipeline.validate { event, _ ->
         val message = event.incomingData as? ChatMessage
         message != null && message.content.isNotBlank()
     }
 
     // Enrichment
-    pipeline.enrich { event ->
+    pipeline.enrich { event, _ ->
         val message = event.incomingData as ChatMessage
         event.enrich("processedAt", System.currentTimeMillis())
         event.enrich("contentLength", message.content.length)
     }
 
     // Processing - simulate slow I/O operation
-    pipeline.process { event ->
+    pipeline.process { event, _ ->
         val message = event.incomingData as ChatMessage
 
         // Simulate database write (slow operation)
@@ -67,7 +67,7 @@ fun createStreamingPipeline(): DataPipeline {
     }
 
     // Dead-letter queue for failed messages
-    pipeline.onFailure { event ->
+    pipeline.onFailure { _, _ ->
         println("[DLQ] Message failed validation or processing")
     }
 

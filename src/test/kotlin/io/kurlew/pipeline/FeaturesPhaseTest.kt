@@ -11,7 +11,7 @@ class FeaturesPhaseTest {
         val pipeline = DataPipeline()
         var processExecuted = false
 
-        pipeline.validate { event ->
+        pipeline.validate { event, _ ->
             event.incomingData is String && event.incomingData.isNotEmpty()
         }
 
@@ -33,7 +33,7 @@ class FeaturesPhaseTest {
         var processExecuted = false
         var fallbackExecuted = false
 
-        pipeline.validate("Data must be non-empty string") { event ->
+        pipeline.validate("Data must be non-empty string") { event, _ ->
             event.incomingData is String && event.incomingData.isNotEmpty()
         }
 
@@ -61,7 +61,7 @@ class FeaturesPhaseTest {
     fun `enrichment adds metadata to outgoingData`() = runBlocking {
         val pipeline = DataPipeline()
 
-        pipeline.enrich { event ->
+        pipeline.enrich { event, _ ->
             event.enrich("timestamp", System.currentTimeMillis())
             event.enrich("source", "api")
         }

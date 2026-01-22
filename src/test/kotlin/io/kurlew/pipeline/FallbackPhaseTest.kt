@@ -26,7 +26,7 @@ class FallbackPhaseTest {
             }
         }
 
-        pipeline.onFailure { event ->
+        pipeline.onFailure { event, _ ->
             fallbackExecuted = true
             deadLetterQueue.add(event)
         }
@@ -45,11 +45,11 @@ class FallbackPhaseTest {
         var successHandlerExecuted = false
         var failureHandlerExecuted = false
 
-        pipeline.onSuccess {
+        pipeline.onSuccess {_, _->
             successHandlerExecuted = true
         }
 
-        pipeline.onFailure {
+        pipeline.onFailure {_, _->
             failureHandlerExecuted = true
         }
 
@@ -68,8 +68,8 @@ class FallbackPhaseTest {
             subject.markFailed("Test failure")
             proceed()
         }
-        pipeline2.onSuccess { successHandlerExecuted = true }
-        pipeline2.onFailure { failureHandlerExecuted = true }
+        pipeline2.onSuccess {_, _-> successHandlerExecuted = true }
+        pipeline2.onFailure {_, _-> failureHandlerExecuted = true }
 
         val failedEvent = DataEvent("data")
         pipeline2.execute(failedEvent)

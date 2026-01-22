@@ -12,7 +12,7 @@ class ProcessPhaseTest {
         val pipeline = DataPipeline()
         var processed = false
 
-        pipeline.process { event ->
+        pipeline.process { event, _ ->
             processed = true
             event.enrich("result", "success")
         }
@@ -29,11 +29,11 @@ class ProcessPhaseTest {
         val pipeline = DataPipeline()
         var processExecuted = false
 
-        pipeline.validate { event ->
+        pipeline.validate { event, _ ->
             event.incomingData is Int && event.incomingData > 0
         }
 
-        pipeline.process { _ ->
+        pipeline.process { _, _ ->
             processExecuted = true
         }
 
