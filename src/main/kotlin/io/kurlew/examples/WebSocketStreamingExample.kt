@@ -33,13 +33,13 @@ fun createStreamingPipeline(): DataPipeline {
 
     // Monitoring with timing
     pipeline.monitoringWrapper(
-        onError = { event, error ->
+        onError = { _, call, error ->
             println("[Error] Failed to process message: ${error.message}")
-            event.markFailed(error.message)
+            call.markFailed(error.message)
         }
     ) {
         val startTime = System.currentTimeMillis()
-        subject.enrich("startTime", startTime)
+        context.enrich("startTime", startTime)
     }
 
     // Validation - filter out invalid messages early
@@ -49,25 +49,25 @@ fun createStreamingPipeline(): DataPipeline {
     }
 
     // Enrichment
-    pipeline.enrich { event ->
+    pipeline.enrich { event, call ->
         val message = event.incomingData as ChatMessage
-        event.enrich("processedAt", System.currentTimeMillis())
-        event.enrich("contentLength", message.content.length)
+        call.enrich("processedAt", System.currentTimeMillis())
+        call.enrich("contentLength", message.content.length)
     }
 
     // Processing - simulate slow I/O operation
-    pipeline.process { event ->
+    pipeline.process { event, call ->
         val message = event.incomingData as ChatMessage
 
         // Simulate database write (slow operation)
         delay(500) // 500ms per message
 
         println("[Process] Saved message from ${message.sender}: ${message.content.take(30)}...")
-        event.enrich("saved", true)
+        call.enrich("saved", true)
     }
 
     // Dead-letter queue for failed messages
-    pipeline.onFailure { event ->
+    pipeline.onFailure { _, _ ->
         println("[DLQ] Message failed validation or processing")
     }
 
@@ -99,7 +99,7 @@ fun simulateWebSocketStream(): Flow<ChatMessage> = flow {
 /**
  * Processes the stream with natural backpressure.
  *
- * Key observation: The Acquire phase calls proceedWith(), which suspends
+ * Key observation: The Setup phase calls proceedWith(), which suspends
  * until the entire pipeline finishes processing the current event. This
  * automatically throttles the producer!
  */
@@ -117,7 +117,7 @@ suspend fun processStreamWithBackpressure(
     stream.collect { message ->
         messageCount++
         val messageStartTime = System.currentTimeMillis()
-        println("\n[Acquire] Received message #$messageCount at ${messageStartTime - startTime}ms")
+        println("\n[Setup] Received message #$messageCount at ${messageStartTime - startTime}ms")
 
         // Create event and process it
         // proceedWith() suspends until processing completes!
@@ -127,7 +127,7 @@ suspend fun processStreamWithBackpressure(
         val messageEndTime = System.currentTimeMillis()
         val processingTime = messageEndTime - messageStartTime
 
-        println("[Acquire] Message #$messageCount completed in ${processingTime}ms")
+        println("[Setup] Message #$messageCount completed in ${processingTime}ms")
         println("         Backpressure in action: Producer waited for consumer!")
     }
 

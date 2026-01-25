@@ -21,10 +21,10 @@ class FeaturesPhaseTest {
         }
 
         val event = DataEvent("valid-data")
-        pipeline.execute(event)
+        val call = pipeline.execute(event)
 
         assertTrue(processExecuted, "Process should execute for valid data")
-        assertFalse(event.isFailed())
+        assertFalse(call.isFailed())
     }
 
     @Test
@@ -38,7 +38,7 @@ class FeaturesPhaseTest {
         }
 
         pipeline.intercept(DataPipelinePhases.Process) {
-            if (!subject.isFailed()) {
+            if (!context.isFailed()) {
                 processExecuted = true
             }
             proceed()
@@ -49,27 +49,27 @@ class FeaturesPhaseTest {
         }
 
         val event = DataEvent("") // Invalid: empty string
-        pipeline.execute(event)
+        val call = pipeline.execute(event)
 
         assertFalse(processExecuted, "Process should NOT execute for invalid data")
         assertTrue(fallbackExecuted, "Fallback SHOULD execute for failed events")
-        assertTrue(event.isFailed())
-        assertEquals("Data must be non-empty string", event.getError())
+        assertTrue(call.isFailed())
+        assertEquals("Data must be non-empty string", call.getError())
     }
 
     @Test
     fun `enrichment adds metadata to outgoingData`() = runBlocking {
         val pipeline = DataPipeline()
 
-        pipeline.enrich { event ->
-            event.enrich("timestamp", System.currentTimeMillis())
-            event.enrich("source", "api")
+        pipeline.enrich { _, call ->
+            call.enrich("timestamp", System.currentTimeMillis())
+            call.enrich("source", "api")
         }
 
         val event = DataEvent("data")
-        pipeline.execute(event)
+        val call = pipeline.execute(event)
 
-        assertNotNull(event.get<Long>("timestamp"))
-        assertEquals("api", event.get<String>("source"))
+        assertNotNull(call.get<Long>("timestamp"))
+        assertEquals("api", call.get<String>("source"))
     }
 }

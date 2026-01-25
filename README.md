@@ -8,7 +8,7 @@ A Ktor-inspired, multi-phase data processing pipeline for resilient data handlin
 
 ## Features
 
-✅ **Phase-Based Architecture**: Five mandatory phases (Acquire, Monitoring, Features, Process, Fallback)  
+✅ **Phase-Based Architecture**: Five mandatory phases (Setup, Monitoring, Features, Process, Fallback)  
 ✅ **Natural Backpressure**: Automatic flow control via coroutine suspension  
 ✅ **Built-in Resilience**: Comprehensive error handling with dead-letter queue support  
 ✅ **Thread Safety**: Immutable input data with contextual isolation  
@@ -60,10 +60,10 @@ pipeline.execute(DataEvent(userData))
 ### Five Mandatory Phases
 
 ```
-Acquire → Monitoring → Features → Process → Fallback
+Setup → Monitoring → Features → Process → Fallback
 ```
 
-1. **Acquire**: Data ingestion and packaging into DataEvent
+1. **Setup**: Data ingestion and packaging into DataEvent
 2. **Monitoring**: Exception detection and observability
 3. **Features**: Validation and data enrichment
 4. **Process**: Core business logic execution
@@ -235,7 +235,7 @@ pipeline.onFailure { event ->
 The pipeline's suspending `proceed()` mechanism creates automatic backpressure:
 
 ```kotlin
-intercept(Acquire) {
+intercept(Setup) {
     while (true) {
         val message = socket.receive()  // Fast producer
         proceedWith(DataEvent(message))  // SUSPENDS until processed

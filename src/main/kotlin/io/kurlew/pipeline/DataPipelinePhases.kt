@@ -4,14 +4,14 @@ import io.ktor.util.pipeline.PipelinePhase
 
 object DataPipelinePhases {
     /**
-     * Phase 1: Acquire
+     * Phase 1: Setup
      *
      * Entry point of the pipeline. Responsible for:
      * - Receiving initial triggers/requests
      * - Fetching raw data from external sources
      * - Creating DataEvent instances
      */
-    val Acquire = PipelinePhase("Acquire")
+    val Setup = PipelinePhase("Setup")
 
     /**
      * Phase 2: Monitoring

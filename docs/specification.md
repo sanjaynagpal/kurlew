@@ -31,7 +31,7 @@ The implementation directly uses the following Ktor classes from `io.ktor.util.p
 
 ```kotlin
 class DataPipeline : Pipeline<DataEvent, DataEvent>(
-    Acquire, Monitoring, Features, Process, Fallback
+    Setup, Monitoring, Features, Process, Fallback
 )
 ```
 
@@ -75,14 +75,14 @@ data class DataEvent(
 The pipeline enforces strict sequential execution:
 
 ```
-Acquire → Monitoring → Features → Process → Fallback
+Setup → Monitoring → Features → Process → Fallback
 ```
 
 Each phase is represented by a `PipelinePhase` object:
 
 ```kotlin
 object DataPipelinePhases {
-    val Acquire = PipelinePhase("Acquire")
+    val Setup = PipelinePhase("Setup")
     val Monitoring = PipelinePhase("Monitoring")
     val Features = PipelinePhase("Features")
     val Process = PipelinePhase("Process")
@@ -92,7 +92,7 @@ object DataPipelinePhases {
 
 ### 4.2 Phase Responsibilities
 
-#### Phase 1: Acquire
+#### Phase 1: Setup
 **Purpose**: Data origination and packaging
 
 **Responsibilities**:
@@ -103,7 +103,7 @@ object DataPipelinePhases {
 
 **Example**:
 ```kotlin
-pipeline.intercept(Acquire) {
+pipeline.intercept(Setup) {
     val rawData = fetchFromAPI()
     proceedWith(DataEvent(rawData))
 }
@@ -276,11 +276,11 @@ intercept(Features) {
 **Behavior**:
 - Replaces current subject with new value
 - All downstream interceptors see new subject
-- Used in Acquire to create DataEvent from raw data
+- Used in Setup to create DataEvent from raw data
 
 **Example**:
 ```kotlin
-intercept(Acquire) {
+intercept(Setup) {
     val rawData = fetchData()
     val event = DataEvent(rawData)
     proceedWith(event) // Change subject for downstream
@@ -431,7 +431,7 @@ pipeline.onFailure { event ->
 The suspending nature of `proceed()` provides automatic backpressure:
 
 ```kotlin
-intercept(Acquire) {
+intercept(Setup) {
     while (true) {
         val message = webSocket.receive()
         val event = DataEvent(message)

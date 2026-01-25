@@ -119,7 +119,7 @@ data class DataEvent(
 
 ### 2.1 Decision: Five Mandatory Phases
 
-**Decision**: Fixed five-phase structure (Acquire, Monitoring, Features, Process, Fallback)
+**Decision**: Fixed five-phase structure (Setup, Monitoring, Features, Process, Fallback)
 
 **Rationale**:
 - **Consistency**: Every pipeline has same structure
@@ -140,7 +140,7 @@ data class DataEvent(
 
 | Phase | Why Mandatory |
 |-------|---------------|
-| Acquire | Every pipeline needs data source |
+| Setup | Every pipeline needs data source |
 | Monitoring | Every pipeline needs error handling |
 | Features | Every pipeline should validate before processing |
 | Process | Core business logic must execute somewhere |
@@ -356,7 +356,7 @@ inline fun <reified T> get(key: String): T?
 
 **Backpressure Example**:
 ```kotlin
-intercept(Acquire) {
+intercept(Setup) {
     while (true) {
         val msg = socket.receive()
         proceedWith(DataEvent(msg)) // Suspends until processed!
@@ -508,8 +508,8 @@ pipeline.onFailure { event ->
 
 **Impact**:
 ```
-Without short-circuit: Acquire → Monitoring → Features → Process → Fallback (100%)
-With short-circuit:    Acquire → Monitoring → Features (20% of cost)
+Without short-circuit: Setup → Monitoring → Features → Process → Fallback (100%)
+With short-circuit:    Setup → Monitoring → Features (20% of cost)
 ```
 
 **Alternatives Considered**:

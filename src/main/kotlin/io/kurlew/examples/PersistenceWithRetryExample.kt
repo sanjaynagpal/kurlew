@@ -37,15 +37,15 @@ fun main() = runBlocking {
 
 fun createResilientPipeline(): DataPipeline {
     val pipeline = DataPipeline()
-    val deadLetterQueue = mutableListOf<DataEvent>()
+    val deadLetterQueue = mutableListOf<Pair<DataEvent, DataPipelineCall>>()
 
     // Monitoring with detailed error tracking
     pipeline.monitoringWrapper(
-        onError = { event, error ->
+        onError = { _, call, error ->
             println("[Monitoring] Caught exception: ${error.message}")
-            event.markFailed(error.message)
-            event.enrich("errorType", error::class.simpleName ?: "Unknown")
-            event.enrich("errorTime", System.currentTimeMillis())
+            call.markFailed(error.message)
+            call.enrich("errorType", error::class.simpleName ?: "Unknown")
+            call.enrich("errorTime", System.currentTimeMillis())
         }
     )
 
@@ -71,8 +71,8 @@ fun createResilientPipeline(): DataPipeline {
                 DatabaseSimulator.save(order)
 
                 println("[Process] ✓ Successfully saved order ${order.orderId}")
-                subject.enrich("saved", true)
-                subject.enrich("attempts", attempt)
+                context.enrich("saved", true)
+                context.enrich("attempts", attempt)
                 proceed()
                 return@intercept
 
@@ -93,20 +93,20 @@ fun createResilientPipeline(): DataPipeline {
     }
 
     // Fallback - Dead Letter Queue
-    pipeline.onFailure { event ->
+    pipeline.onFailure { event, call ->
         println("[Fallback] Adding failed event to DLQ")
-        deadLetterQueue.add(event)
+        deadLetterQueue.add(event to call)
 
         val order = event.incomingData as OrderData
         println("  - Order ID: ${order.orderId}")
-        println("  - Error: ${event.getError()}")
-        println("  - Error Type: ${event.get<String>("errorType")}")
+        println("  - Error: ${call.getError()}")
+        println("  - Error Type: ${call.get<String>("errorType")}")
         println("  - DLQ Size: ${deadLetterQueue.size}")
     }
 
-    pipeline.onSuccess { event ->
+    pipeline.onSuccess { event, call ->
         val order = event.incomingData as OrderData
-        val attempts = event.get<Int>("attempts") ?: 1
+        val attempts = call.get<Int>("attempts") ?: 1
         println("[Fallback] Order ${order.orderId} successfully processed after $attempts attempt(s)")
     }
 

@@ -17,9 +17,9 @@ fun main() = runBlocking {
     // Create the pipeline
     val pipeline = DataPipeline()
 
-    // === Phase 1: Acquire ===
-    pipeline.intercept(DataPipelinePhases.Acquire) {
-        println("[Acquire] Received registration request")
+    // === Phase 1: Setup ===
+    pipeline.intercept(DataPipelinePhases.Setup) {
+        println("[Setup] Received registration request")
         // In real scenario, this will fetch from an API or message queue
         proceed()
     }
@@ -27,12 +27,12 @@ fun main() = runBlocking {
     // === Phase 2: Monitoring ===
     // Add monitoring with error handling
     pipeline.monitoringWrapper(
-        onError = { event, error ->
-            println("[Monitoring] Received registration request")
-            event.markFailed(error.message)
+        onError = { _, call, error ->
+            println("[Monitoring] Error occurred: ${error.message}")
+            call.markFailed(error.message)
         },
-        onSuccess = { event ->
-            println("[Monitoring] Received registration request: $event")
+        onSuccess = { _, _ ->
+            println("[Monitoring] Processing completed successfully")
         }
     ) {
         println("[Monitoring] Starting pipeline execution")
@@ -45,36 +45,36 @@ fun main() = runBlocking {
     }
 
     // Enrich with additional data
-    pipeline.enrich { event ->
+    pipeline.enrich { _, call ->
         println("[Features] Validating and enriching data")
-        event.enrich("timestamp", System.currentTimeMillis())
-        event.enrich("source", "registration-api")
+        call.enrich("timestamp", System.currentTimeMillis())
+        call.enrich("source", "registration-api")
     }
 
     // === Phase 4: Process ===
     // Execute the main business logic
-    pipeline.process { event ->
+    pipeline.process { event, call ->
         println("[Process] Saving user to database")
         val user = event.incomingData as UserRegistration
 
         // Simulate database save
         println("  - Saving user: ${user.email}")
-        event.enrich("userId", generateUserId(user.email))
-        event.enrich("saved", true)
+        call.enrich("userId", generateUserId(user.email))
+        call.enrich("saved", true)
     }
 
     // === Phase 5: Fallback ===
     // Handle failures
-    pipeline.onFailure { event ->
-        println("[Fallback] Event failed: ${event.getError()}")
+    pipeline.onFailure { event, call ->
+        println("[Fallback] Event failed: ${call.getError()}")
         println("  - Saving to dead-letter queue")
         // In real scenarios, save to DLQ
-        logFailedEvent(event)
+        logFailedEvent(event, call)
     }
     // Handle successes
-    pipeline.onSuccess { event ->
+    pipeline.onSuccess { _, call ->
         println("[Fallback] Event processed successfully")
-        val userId = event.get<String>("userId")
+        val userId = call.get<String>("userId")
         println("  - User ID: $userId")
     }
 
@@ -106,7 +106,7 @@ fun generateUserId(email: String): String {
     return "user_${email.hashCode().toString(16)}"
 }
 
-fun logFailedEvent(event: DataEvent) {
+fun logFailedEvent(event: DataEvent, call: io.kurlew.pipeline.DataPipelineCall) {
     println("  - DLQ Entry: ${event.incomingData}")
-    println("  - Error: ${event.getError()}")
+    println("  - Error: ${call.getError()}")
 }

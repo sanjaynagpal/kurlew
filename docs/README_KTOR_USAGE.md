@@ -29,7 +29,7 @@ The Data Pipeline implementation is built on top of Ktor's robust `Pipeline` inf
 **Our Usage**:
 ```kotlin
 class DataPipeline : Pipeline<DataEvent, DataEvent>(
-    Acquire, Monitoring, Features, Process, Fallback
+    Setup, Monitoring, Features, Process, Fallback
 )
 ```
 
@@ -63,7 +63,7 @@ class ApplicationCallPipeline : Pipeline<Unit, ApplicationCall>(
 **Our Usage**:
 ```kotlin
 object DataPipelinePhases {
-    val Acquire = PipelinePhase("Acquire")
+    val Setup = PipelinePhase("Setup")
     val Monitoring = PipelinePhase("Monitoring")
     val Features = PipelinePhase("Features")
     val Process = PipelinePhase("Process")
@@ -92,7 +92,7 @@ pipeline.insertPhaseAfter(Monitoring, CustomPhase)
 pipeline.insertPhaseBefore(Process, ValidationPhase)
 
 // We use fixed ordering, but relationships still work
-val phases = listOf(Acquire, Monitoring, Features, Process, Fallback)
+val phases = listOf(Setup, Monitoring, Features, Process, Fallback)
 // Pipeline executes in this exact order
 ```
 
@@ -124,7 +124,7 @@ pipeline.intercept(DataPipelinePhases.Process) {
 | `context` | The current context (also DataEvent) | Same as subject in our case |
 | `proceed()` | Continue to next interceptor | Standard flow control |
 | `finish()` | Stop pipeline execution | Validation failures |
-| `proceedWith(value)` | Replace subject | Acquire phase creates DataEvent |
+| `proceedWith(value)` | Replace subject | Setup phase creates DataEvent |
 
 **Ktor HTTP Example**:
 ```kotlin
@@ -215,13 +215,13 @@ Pipeline<DataEvent, DataEvent>
 - Setup → Monitoring → Plugins → Call → Fallback
 
 **Our Data Phases**:
-- Acquire → Monitoring → Features → Process → Fallback
+- Setup → Monitoring → Features → Process → Fallback
 
 **Mapping**:
 
 | Ktor Phase | Our Phase | Purpose Adaptation |
 |------------|-----------|-------------------|
-| N/A | Acquire | Data ingestion (HTTP has implicit request reception) |
+| N/A | Setup | Data ingestion (HTTP has implicit request reception) |
 | Monitoring | Monitoring | Same concept - error detection |
 | Plugins | Features | Validation and enrichment (vs HTTP features like auth) |
 | Call | Process | Business logic (vs request handling) |
@@ -288,7 +288,7 @@ suspend fun PipelineContext<T, C>.proceed() {
 
 **Backpressure Mechanism**:
 ```kotlin
-intercept(Acquire) {
+intercept(Setup) {
     while (true) {
         val message = webSocket.receive()  // Fast producer
         val event = DataEvent(message)
@@ -354,13 +354,13 @@ suspend fun PipelineContext<T, C>.proceedWith(newSubject: T) {
 ```
 
 **Use Cases**:
-1. **Acquire Phase**: Transform raw input to DataEvent
+1. **Setup Phase**: Transform raw input to DataEvent
 2. **Data Transformation**: Convert between formats
 3. **Enrichment**: Create enhanced version of data
 
 **Example**:
 ```kotlin
-intercept(Acquire) {
+intercept(Setup) {
     // Receive raw data
     val rawData = fetchFromAPI()
     
@@ -486,7 +486,7 @@ pipeline.intercept(EnrichmentPhase) {
 ```kotlin
 // Register interceptors at runtime
 fun registerDataSource(source: DataSource) {
-    pipeline.intercept(Acquire) {
+    pipeline.intercept(Setup) {
         val data = source.fetch()
         proceedWith(DataEvent(data))
     }

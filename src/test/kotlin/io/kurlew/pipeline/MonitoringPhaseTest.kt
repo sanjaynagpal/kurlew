@@ -17,9 +17,9 @@ class MonitoringPhaseTest {
         var errorCaught = false
 
         pipeline.monitoringWrapper(
-            onError = { event, error ->
+            onError = { _, call, error ->
                 errorCaught = true
-                event.markFailed(error.message)
+                call.markFailed(error.message)
             }
         )
 
@@ -28,11 +28,11 @@ class MonitoringPhaseTest {
         }
 
         val event = DataEvent("data")
-        pipeline.execute(event)
+        val call = pipeline.execute(event)
 
         assertTrue(errorCaught, "Monitoring should catch exceptions")
-        assertTrue(event.isFailed(), "Event should be marked as failed")
-        assertEquals("Simulated error", event.getError())
+        assertTrue(call.isFailed(), "Event should be marked as failed")
+        assertEquals("Simulated error", call.getError())
     }
 
     @Test
@@ -41,8 +41,8 @@ class MonitoringPhaseTest {
         var fallbackExecuted = false
 
         pipeline.monitoringWrapper(
-            onError = { event, error ->
-                event.markFailed(error.message)
+            onError = { _, call, error ->
+                call.markFailed(error.message)
             }
         )
 
@@ -51,7 +51,7 @@ class MonitoringPhaseTest {
         }
 
         pipeline.intercept(DataPipelinePhases.Fallback) {
-            if (subject.isFailed()) {
+            if (context.isFailed()) {
                 fallbackExecuted = true
             }
         }
@@ -74,8 +74,8 @@ class MonitoringPhaseTest {
         }
 
         val event = DataEvent("data")
-        pipeline.execute(event)
+        val call = pipeline.execute(event)
 
-        assertNotNull(event.get<Duration>("processingDuration"))
+        assertNotNull(call.get<Duration>("processingDuration"))
     }
 }

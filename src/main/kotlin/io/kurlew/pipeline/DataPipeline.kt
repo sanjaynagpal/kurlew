@@ -1,7 +1,7 @@
 package io.kurlew.pipeline
 
 import io.ktor.util.pipeline.Pipeline
-import io.kurlew.pipeline.DataPipelinePhases.Acquire
+import io.kurlew.pipeline.DataPipelinePhases.Setup
 import io.kurlew.pipeline.DataPipelinePhases.Fallback
 import io.kurlew.pipeline.DataPipelinePhases.Features
 import io.kurlew.pipeline.DataPipelinePhases.Monitoring
@@ -16,20 +16,21 @@ import kotlin.coroutines.CoroutineContext
  *
  * The DataPipeline extends Ktor's Pipeline class to provide a structured, sequential,
  * and extensible framework for processing DataEvent objects. It enforces a strict
- * five-phase lifecycle: Acquire → Monitoring → Features → Process → Fallback.
+ * five-phase lifecycle: Setup → Monitoring → Features → Process → Fallback.
  *
  * Key architectural principles:
  * - Phase-Based Sequential Execution: Predictable, ordered processing
- * - Contextual Isolation: Each DataEvent is a unique instance (thread-safe)
- * - Immutable Core, Mutable State: incomingData is immutable, outgoingData is mutable
+ * - Contextual Isolation: Each DataPipelineCall is a unique instance (thread-safe)
+ * - Immutable Subject, Mutable Context: DataEvent (subject) is immutable, DataPipelineCall (context) is mutable
  * - Built-in Resilience: Monitoring and Fallback phases handle all failures
  *
- * @see DataEvent The context object that flows through the pipeline
+ * @see DataEvent The immutable subject that flows through the pipeline
+ * @see DataPipelineCall The mutable context that accumulates state
  * @see DataPipelinePhases The five mandatory phases
  */
 class DataPipeline (
     override val coroutineContext: CoroutineContext = Dispatchers.Default + SupervisorJob()
-) : Pipeline<DataEvent, DataEvent>(Acquire, Monitoring, Features, Process, Fallback),
+) : Pipeline<DataEvent, DataPipelineCall>(Setup, Monitoring, Features, Process, Fallback),
     CoroutineScope {
 
     /**
@@ -39,11 +40,12 @@ class DataPipeline (
      * all configured interceptors in phase order unless short-circuited by finish().
      *
      * @param event The DataEvent to process
-     * @return The processed DataEvent (with enriched outgoingData)
+     * @return The DataPipelineCall containing the processing results
      */
-    suspend fun execute(event: DataEvent): DataEvent {
-        execute(event, event)
-        return event
+    suspend fun execute(event: DataEvent): DataPipelineCall {
+        val call = DataPipelineCall()
+        execute(call, event)
+        return call
     }
 
     /**
@@ -51,9 +53,9 @@ class DataPipeline (
      * Creates a DataEvent wrapper automatically.
      *
      * @param rawData The raw data to process
-     * @return The processed DataEvent
+     * @return The DataPipelineCall containing the processing results
      */
-    suspend fun executeRaw(rawData: Any): DataEvent {
+    suspend fun executeRaw(rawData: Any): DataPipelineCall {
         return execute(DataEvent(rawData))
     }
 }

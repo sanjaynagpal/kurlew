@@ -10,8 +10,8 @@ class DataPipelineTest {
         val executionOrder = mutableListOf<String>()
         val pipeline = DataPipeline()
 
-        pipeline.intercept(DataPipelinePhases.Acquire) {
-            executionOrder.add("Acquire")
+        pipeline.intercept(DataPipelinePhases.Setup) {
+            executionOrder.add("Setup")
             proceed()
         }
 
@@ -38,7 +38,7 @@ class DataPipelineTest {
         pipeline.execute(event)
 
         assertEquals(
-            listOf("Acquire", "Monitoring", "Features", "Process", "Fallback"),
+            listOf("Setup", "Monitoring", "Features", "Process", "Fallback"),
             executionOrder,
             "Phases should execute in the correct order"
         )
@@ -62,34 +62,34 @@ class DataPipelineTest {
     }
 
     @Test
-    fun `outgoingData accumulates across phases`() = runBlocking {
+    fun `call attributes accumulate across phases`() = runBlocking {
         val pipeline = DataPipeline()
 
         pipeline.intercept(DataPipelinePhases.Features) {
-            subject.enrich("feature1", "value1")
+            context.enrich("feature1", "value1")
             proceed()
         }
 
         pipeline.intercept(DataPipelinePhases.Features) {
-            subject.enrich("feature2", "value2")
-            assertEquals("value1", subject.get<String>("feature1"),
+            context.enrich("feature2", "value2")
+            assertEquals("value1", context.get<String>("feature1"),
                 "Previous enrichment should be accessible")
             proceed()
         }
 
         pipeline.intercept(DataPipelinePhases.Process) {
-            assertEquals("value1", subject.get<String>("feature1"))
-            assertEquals("value2", subject.get<String>("feature2"))
-            subject.enrich("processed", true)
+            assertEquals("value1", context.get<String>("feature1"))
+            assertEquals("value2", context.get<String>("feature2"))
+            context.enrich("processed", true)
             proceed()
         }
 
         val event = DataEvent("data")
-        pipeline.execute(event)
+        val call = pipeline.execute(event)
 
-        assertEquals("value1", event.get<String>("feature1"))
-        assertEquals("value2", event.get<String>("feature2"))
-        assertEquals(true, event.get<Boolean>("processed"))
+        assertEquals("value1", call.get<String>("feature1"))
+        assertEquals("value2", call.get<String>("feature2"))
+        assertEquals(true, call.get<Boolean>("processed"))
     }
 
     @Test

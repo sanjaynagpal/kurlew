@@ -2,6 +2,7 @@ package io.kurlew.pipeline.extensions
 
 import io.kurlew.pipeline.DataEvent
 import io.kurlew.pipeline.DataPipeline
+import io.kurlew.pipeline.DataPipelineCall
 import io.kurlew.pipeline.DataPipelinePhases
 import io.ktor.util.pipeline.PipelineContext
 import io.ktor.util.pipeline.PipelineInterceptor
@@ -25,11 +26,11 @@ import kotlin.time.measureTime
  * ```
  */
 fun DataPipeline.monitoringWrapper(
-    onError: (DataEvent, Throwable) -> Unit = { event, error ->
-        event.markFailed(error.message)
+    onError: (DataEvent, DataPipelineCall, Throwable) -> Unit = { _, call, error ->
+        call.markFailed(error.message)
     },
-    onSuccess: (DataEvent) -> Unit = {},
-    block: suspend PipelineContext<DataEvent, DataEvent>.() -> Unit = {}
+    onSuccess: (DataEvent, DataPipelineCall) -> Unit = { _, _ -> },
+    block: suspend PipelineContext<DataEvent, DataPipelineCall>.() -> Unit = {}
 ) {
     intercept(DataPipelinePhases.Monitoring) {
         block()
@@ -37,20 +38,20 @@ fun DataPipeline.monitoringWrapper(
         val duration = measureTime {
             try {
                 proceed()
-                onSuccess(subject)
+                onSuccess(subject, context)
             } catch (e: Exception) {
-                onError(subject, e)
+                onError(subject, context, e)
                 proceed() // Let Fallback handle it
             }
         }
 
-        subject.enrich("processingDuration", duration)
+        context.enrich("processingDuration", duration)
     }
 }
 
 /**
  * Adds a validation interceptor to the Features phase.
- * Marks event as failed but allows it to proceed to Fallback for proper handling.
+ * Marks call as failed but allows it to proceed to Fallback for proper handling.
  *
  * Note: We don't call finish() here because that would skip the Fallback phase,
  * preventing proper error handling and DLQ operations.
@@ -68,11 +69,11 @@ fun DataPipeline.validate(
 ) {
     intercept(DataPipelinePhases.Features) {
         if (!predicate(subject)) {
-            subject.markFailed(errorMessage)
+            context.markFailed(errorMessage)
             // Don't call finish() - allow event to proceed to Fallback
             // This ensures proper error handling and DLQ operations
         } else {
-            subject.enrich("validated", true)
+            context.enrich("validated", true)
         }
         proceed()
     }
@@ -82,82 +83,82 @@ fun DataPipeline.validate(
  *
  * Example:
  * ```
- * pipeline.enrich { event ->
- *     event.enrich("timestamp", Clock.System.now())
+ * pipeline.enrich { event, call ->
+ *     call.enrich("timestamp", Clock.System.now())
  * }
  * ```
  */
 fun DataPipeline.enrich(
-    enricher: (DataEvent) -> Unit
+    enricher: (DataEvent, DataPipelineCall) -> Unit
 ) {
     intercept(DataPipelinePhases.Features) {
-        enricher(subject)
+        enricher(subject, context)
         proceed()
     }
 }
 
 /**
  * Adds a processing interceptor to the Process phase.
- * Only executes if the event is not already marked as failed.
+ * Only executes if the call is not already marked as failed.
  *
  * Example:
  * ```
- * pipeline.process { event ->
+ * pipeline.process { event, call ->
  *     database.save(event.incomingData)
  * }
  * ```
  */
 fun DataPipeline.process(
-    processor: suspend (DataEvent) -> Unit
+    processor: suspend (DataEvent, DataPipelineCall) -> Unit
 ) {
     intercept(DataPipelinePhases.Process) {
         // Only process if not already failed
-        if (!subject.isFailed()) {
-            processor(subject)
+        if (!context.isFailed()) {
+            processor(subject, context)
         }
         proceed()
     }
 }
 
 /**
- * Adds a fallback handler for failed events.
- * Only executes if the event is marked as failed.
+ * Adds a fallback handler for failed calls.
+ * Only executes if the call is marked as failed.
  *
  * Example:
  * ```
- * pipeline.onFailure { event ->
- *     deadLetterQueue.send(event)
+ * pipeline.onFailure { event, call ->
+ *     deadLetterQueue.send(event to call)
  * }
  * ```
  */
 fun DataPipeline.onFailure(
-    handler: suspend (DataEvent) -> Unit
+    handler: suspend (DataEvent, DataPipelineCall) -> Unit
 ) {
     intercept(DataPipelinePhases.Fallback) {
-        if (subject.isFailed()) {
-            handler(subject)
+        if (context.isFailed()) {
+            handler(subject, context)
         }
         // No proceed() - this is terminal
     }
 }
 
 /**
- * Adds a success handler for successful events.
- * Only executes if the event is NOT marked as failed.
+ * Adds a success handler for successful calls.
+ * Only executes if the call is NOT marked as failed.
  *
  * Example:
  * ```
- * pipeline.onSuccess { event ->
+ * pipeline.onSuccess { event, call ->
  *     metrics.recordSuccess()
  * }
  * ```
  */
 fun DataPipeline.onSuccess(
-    handler: suspend (DataEvent) -> Unit
+    handler: suspend (DataEvent, DataPipelineCall) -> Unit
 ) {
     intercept(DataPipelinePhases.Fallback) {
-        if (!subject.isFailed()) {
-            handler(subject)
+        if (!context.isFailed()) {
+            handler(subject, context)
         }
         // No proceed() - this is terminal
     }
@@ -177,7 +178,7 @@ fun DataPipeline.onSuccess(
 fun DataPipeline.retry(
     maxAttempts: Int = 3,
     delay: Duration = Duration.ZERO,
-    processor: PipelineInterceptor<DataEvent, DataEvent>
+    processor: PipelineInterceptor<DataEvent, DataPipelineCall>
 ) {
     intercept(DataPipelinePhases.Process) {
         var lastError: Throwable? = null

@@ -25,7 +25,7 @@ pipeline.onFailure { event ->
 
 **Execution Flow**:
 ```
-Acquire → Monitoring → Features (finish() called) → ❌ STOPPED
+Setup → Monitoring → Features (finish() called) → ❌ STOPPED
                                                     ↓
                                               Fallback NEVER RUNS
                                               DLQ NEVER CALLED
@@ -57,7 +57,7 @@ pipeline.onFailure { event ->
 
 **Execution Flow**:
 ```
-Acquire → Monitoring → Features (marked failed) → Process (skipped if failed) → Fallback (handles failure)
+Setup → Monitoring → Features (marked failed) → Process (skipped if failed) → Fallback (handles failure)
                                                                                     ↓
                                                                               DLQ CALLED ✓
 ```
