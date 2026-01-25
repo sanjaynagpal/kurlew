@@ -25,12 +25,12 @@ import kotlin.time.measureTime
  * }
  * ```
  */
-fun DataPipeline.monitoringWrapper(
-    onError: (DataEvent, DataPipelineCall, Throwable) -> Unit = { _, call, error ->
+fun <T> DataPipeline<T>.monitoringWrapper(
+    onError: (DataEvent<T>, DataPipelineCall, Throwable) -> Unit = { _, call, error ->
         call.markFailed(error.message)
     },
-    onSuccess: (DataEvent, DataPipelineCall) -> Unit = { _, _ -> },
-    block: suspend PipelineContext<DataEvent, DataPipelineCall>.() -> Unit = {}
+    onSuccess: (DataEvent<T>, DataPipelineCall) -> Unit = { _, _ -> },
+    block: suspend PipelineContext<DataEvent<T>, DataPipelineCall>.() -> Unit = {}
 ) {
     intercept(DataPipelinePhases.Monitoring) {
         block()
@@ -63,9 +63,9 @@ fun DataPipeline.monitoringWrapper(
  * }
  * ```
  */
-fun DataPipeline.validate(
+fun <T> DataPipeline<T>.validate(
     errorMessage: String = "Validation failed",
-    predicate: (DataEvent) -> Boolean
+    predicate: (DataEvent<T>) -> Boolean
 ) {
     intercept(DataPipelinePhases.Features) {
         if (!predicate(subject)) {
@@ -88,8 +88,8 @@ fun DataPipeline.validate(
  * }
  * ```
  */
-fun DataPipeline.enrich(
-    enricher: (DataEvent, DataPipelineCall) -> Unit
+fun <T> DataPipeline<T>.enrich(
+    enricher: (DataEvent<T>, DataPipelineCall) -> Unit
 ) {
     intercept(DataPipelinePhases.Features) {
         enricher(subject, context)
@@ -108,8 +108,8 @@ fun DataPipeline.enrich(
  * }
  * ```
  */
-fun DataPipeline.process(
-    processor: suspend (DataEvent, DataPipelineCall) -> Unit
+fun <T> DataPipeline<T>.process(
+    processor: suspend (DataEvent<T>, DataPipelineCall) -> Unit
 ) {
     intercept(DataPipelinePhases.Process) {
         // Only process if not already failed
@@ -131,8 +131,8 @@ fun DataPipeline.process(
  * }
  * ```
  */
-fun DataPipeline.onFailure(
-    handler: suspend (DataEvent, DataPipelineCall) -> Unit
+fun <T> DataPipeline<T>.onFailure(
+    handler: suspend (DataEvent<T>, DataPipelineCall) -> Unit
 ) {
     intercept(DataPipelinePhases.Fallback) {
         if (context.isFailed()) {
@@ -153,8 +153,8 @@ fun DataPipeline.onFailure(
  * }
  * ```
  */
-fun DataPipeline.onSuccess(
-    handler: suspend (DataEvent, DataPipelineCall) -> Unit
+fun <T> DataPipeline<T>.onSuccess(
+    handler: suspend (DataEvent<T>, DataPipelineCall) -> Unit
 ) {
     intercept(DataPipelinePhases.Fallback) {
         if (!context.isFailed()) {
@@ -175,10 +175,10 @@ fun DataPipeline.onSuccess(
  * }
  * ```
  */
-fun DataPipeline.retry(
+fun <T> DataPipeline<T>.retry(
     maxAttempts: Int = 3,
     delay: Duration = Duration.ZERO,
-    processor: PipelineInterceptor<DataEvent, DataPipelineCall>
+    processor: PipelineInterceptor<DataEvent<T>, DataPipelineCall>
 ) {
     intercept(DataPipelinePhases.Process) {
         var lastError: Throwable? = null

@@ -8,11 +8,11 @@ class FeaturesPhaseTest {
 
     @Test
     fun `validation passes for valid data`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
         var processExecuted = false
 
         pipeline.validate { event ->
-            event.incomingData is String && event.incomingData.isNotEmpty()
+            event.incoming.isNotEmpty()
         }
 
         pipeline.intercept(DataPipelinePhases.Process) {
@@ -29,12 +29,12 @@ class FeaturesPhaseTest {
 
     @Test
     fun `validation fails and allows processing to Fallback`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
         var processExecuted = false
         var fallbackExecuted = false
 
         pipeline.validate("Data must be non-empty string") { event ->
-            event.incomingData is String && event.incomingData.isNotEmpty()
+            event.incoming.isNotEmpty()
         }
 
         pipeline.intercept(DataPipelinePhases.Process) {
@@ -59,7 +59,7 @@ class FeaturesPhaseTest {
 
     @Test
     fun `enrichment adds metadata to outgoingData`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
 
         pipeline.enrich { _, call ->
             call.enrich("timestamp", System.currentTimeMillis())

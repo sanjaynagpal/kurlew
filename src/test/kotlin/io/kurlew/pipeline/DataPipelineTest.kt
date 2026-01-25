@@ -8,7 +8,7 @@ class DataPipelineTest {
     @Test
     fun `pipeline executes phases in correct order`() = runBlocking {
         val executionOrder = mutableListOf<String>()
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
 
         pipeline.intercept(DataPipelinePhases.Setup) {
             executionOrder.add("Setup")
@@ -46,24 +46,24 @@ class DataPipelineTest {
 
     @Test
     fun `incomingData remains immutable throughout pipeline`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
         val originalData = "original-data"
 
         pipeline.intercept(DataPipelinePhases.Process) {
             // Attempt to verify immutability - incomingData reference cannot change
-            assertEquals(originalData, subject.incomingData)
+            assertEquals(originalData, subject.incoming)
             proceed()
         }
 
         val event = DataEvent(originalData)
         pipeline.execute(event)
 
-        assertEquals(originalData, event.incomingData, "incomingData must remain unchanged")
+        assertEquals(originalData, event.incoming, "incomingData must remain unchanged")
     }
 
     @Test
     fun `call attributes accumulate across phases`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
 
         pipeline.intercept(DataPipelinePhases.Features) {
             context.enrich("feature1", "value1")
@@ -95,7 +95,7 @@ class DataPipelineTest {
     @Test
     fun `finish() short-circuits pipeline execution`() = runBlocking {
         val executionOrder = mutableListOf<String>()
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
 
         pipeline.intercept(DataPipelinePhases.Features) {
             executionOrder.add("Features")

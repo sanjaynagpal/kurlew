@@ -9,9 +9,9 @@ class FallbackPhaseTest {
 
     @Test
     fun `fallback handles failed events`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
         var fallbackExecuted = false
-        val deadLetterQueue = mutableListOf<DataEvent>()
+        val deadLetterQueue = mutableListOf<DataEvent<String>>()
 
         pipeline.intercept(DataPipelinePhases.Process) {
             throw IllegalStateException("Simulated failure")
@@ -41,7 +41,7 @@ class FallbackPhaseTest {
 
     @Test
     fun `success handler only executes for successful events`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
         var successHandlerExecuted = false
         var failureHandlerExecuted = false
 
@@ -63,7 +63,7 @@ class FallbackPhaseTest {
         successHandlerExecuted = false
         failureHandlerExecuted = false
 
-        val pipeline2 = DataPipeline()
+        val pipeline2 = DataPipeline<String>()
         pipeline2.intercept(DataPipelinePhases.Process) {
             context.markFailed("Test failure")
             proceed()

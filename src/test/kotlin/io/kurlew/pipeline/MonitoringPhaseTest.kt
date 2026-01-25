@@ -13,7 +13,7 @@ class MonitoringPhaseTest {
 
     @Test
     fun `monitoring catches exceptions from Process phase`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
         var errorCaught = false
 
         pipeline.monitoringWrapper(
@@ -37,7 +37,7 @@ class MonitoringPhaseTest {
 
     @Test
     fun `monitoring allows event to proceed to Fallback after error`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
         var fallbackExecuted = false
 
         pipeline.monitoringWrapper(
@@ -64,7 +64,7 @@ class MonitoringPhaseTest {
 
     @Test
     fun `monitoring records processing duration`(): Unit = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
 
         pipeline.monitoringWrapper()
 

@@ -9,7 +9,7 @@ class ProcessPhaseTest {
 
     @Test
     fun `process phase executes business logic`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<String>()
         var processed = false
 
         pipeline.process { _, call ->
@@ -26,11 +26,11 @@ class ProcessPhaseTest {
 
     @Test
     fun `process phase only receives validated data`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<Int>()
         var processExecuted = false
 
         pipeline.validate { event ->
-            event.incomingData is Int && event.incomingData > 0
+            event.incoming > 0
         }
 
         pipeline.process { _, _ ->

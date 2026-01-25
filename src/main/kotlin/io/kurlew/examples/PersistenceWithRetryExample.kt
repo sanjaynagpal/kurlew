@@ -35,9 +35,9 @@ fun main() = runBlocking {
     val x = pipeline.execute(failEvent)
 }
 
-fun createResilientPipeline(): DataPipeline {
-    val pipeline = DataPipeline()
-    val deadLetterQueue = mutableListOf<Pair<DataEvent, DataPipelineCall>>()
+fun createResilientPipeline(): DataPipeline<OrderData> {
+    val pipeline = DataPipeline<OrderData>()
+    val deadLetterQueue = mutableListOf<Pair<DataEvent<OrderData>, DataPipelineCall>>()
 
     // Monitoring with detailed error tracking
     pipeline.monitoringWrapper(
@@ -51,13 +51,13 @@ fun createResilientPipeline(): DataPipeline {
 
     // Validation
     pipeline.validate { event ->
-        val order = event.incomingData as? OrderData
+        val order = event.incoming as? OrderData
         order != null && order.amount > 0
     }
 
     // Process with retry logic
     pipeline.intercept(DataPipelinePhases.Process) {
-        val order = subject.incomingData as OrderData
+        val order = subject.incoming as OrderData
         var attempt = 0
         var lastError: Exception? = null
         val maxAttempts = 3
@@ -97,7 +97,7 @@ fun createResilientPipeline(): DataPipeline {
         println("[Fallback] Adding failed event to DLQ")
         deadLetterQueue.add(event to call)
 
-        val order = event.incomingData as OrderData
+        val order = event.incoming as OrderData
         println("  - Order ID: ${order.orderId}")
         println("  - Error: ${call.getError()}")
         println("  - Error Type: ${call.get<String>("errorType")}")
@@ -105,7 +105,7 @@ fun createResilientPipeline(): DataPipeline {
     }
 
     pipeline.onSuccess { event, call ->
-        val order = event.incomingData as OrderData
+        val order = event.incoming as OrderData
         val attempts = call.get<Int>("attempts") ?: 1
         println("[Fallback] Order ${order.orderId} successfully processed after $attempts attempt(s)")
     }

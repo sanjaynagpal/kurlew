@@ -28,9 +28,9 @@ import kotlin.coroutines.CoroutineContext
  * @see DataPipelineCall The mutable context that accumulates state
  * @see DataPipelinePhases The five mandatory phases
  */
-class DataPipeline (
+class DataPipeline<T> (
     override val coroutineContext: CoroutineContext = Dispatchers.Default + SupervisorJob()
-) : Pipeline<DataEvent, DataPipelineCall>(Setup, Monitoring, Features, Process, Fallback),
+) : Pipeline<DataEvent<T>, DataPipelineCall>(Setup, Monitoring, Features, Process, Fallback),
     CoroutineScope {
 
     /**
@@ -42,20 +42,10 @@ class DataPipeline (
      * @param event The DataEvent to process
      * @return The DataPipelineCall containing the processing results
      */
-    suspend fun execute(event: DataEvent): DataPipelineCall {
+    suspend fun execute(event: DataEvent<T>): DataPipelineCall {
         val call = DataPipelineCall()
         execute(call, event)
         return call
     }
 
-    /**
-     * Convenience method to execute the pipeline with raw data.
-     * Creates a DataEvent wrapper automatically.
-     *
-     * @param rawData The raw data to process
-     * @return The DataPipelineCall containing the processing results
-     */
-    suspend fun executeRaw(rawData: Any): DataPipelineCall {
-        return execute(DataEvent(rawData))
-    }
 }

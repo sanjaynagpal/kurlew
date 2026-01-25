@@ -12,7 +12,7 @@ class EndToEndPipelineTest {
 
     @Test
     fun `complete pipeline processes valid request successfully`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<UserRequest>()
         val processedRequests = mutableListOf<UserRequest>()
 
         // Monitoring
@@ -20,11 +20,11 @@ class EndToEndPipelineTest {
 
         // Validation
         pipeline.validate { event ->
-            event.incomingData is UserRequest
+            event.incoming is UserRequest
         }
 
         pipeline.intercept(DataPipelinePhases.Features) {
-            val request = subject.incomingData as UserRequest
+            val request = subject.incoming as UserRequest
             if (request.userId <= 0) {
                 context.markFailed("Invalid user ID")
                 finish()
@@ -36,7 +36,7 @@ class EndToEndPipelineTest {
 
         // Processing
         pipeline.process { event, call ->
-            val request = event.incomingData as UserRequest
+            val request = event.incoming as UserRequest
             processedRequests.add(request)
             call.enrich("processedAt", System.currentTimeMillis())
         }
@@ -52,7 +52,7 @@ class EndToEndPipelineTest {
 
         // Execute with valid request
         val validRequest = UserRequest(userId = 123, action = "login")
-        val call = pipeline.executeRaw(validRequest)
+        val call = pipeline.execute(DataEvent(validRequest))
 
         assertEquals(1, processedRequests.size)
         assertEquals("completed", call.get<String>("status"))
@@ -62,14 +62,14 @@ class EndToEndPipelineTest {
 
     @Test
     fun `complete pipeline handles validation failure`() = runBlocking {
-        val pipeline = DataPipeline()
+        val pipeline = DataPipeline<UserRequest>()
         val processedRequests = mutableListOf<UserRequest>()
-        val failedRequests = mutableListOf<DataEvent>()
+        val failedRequests = mutableListOf<DataEvent<UserRequest>>()
 
         pipeline.monitoringWrapper()
 
         pipeline.intercept(DataPipelinePhases.Features) {
-            val request = subject.incomingData as? UserRequest
+            val request = subject.incoming as? UserRequest
             if (request == null || request.userId <= 0) {
                 context.markFailed("Invalid request or user ID")
                 // Don't call finish() - let it proceed to Fallback
@@ -79,7 +79,7 @@ class EndToEndPipelineTest {
 
         pipeline.process { event, _ ->
             // This check is now inside the process extension
-            processedRequests.add(event.incomingData as UserRequest)
+            processedRequests.add(event.incoming as UserRequest)
         }
 
         pipeline.onFailure { event, _ ->
@@ -88,7 +88,7 @@ class EndToEndPipelineTest {
 
         // Execute with invalid request
         val invalidRequest = UserRequest(userId = -1, action = "login")
-        val call = pipeline.executeRaw(invalidRequest)
+        val call = pipeline.execute(DataEvent(invalidRequest))
 
         assertEquals(0, processedRequests.size, "Invalid request should not be processed")
         assertEquals(1, failedRequests.size, "Failed request should be in failedRequests")
@@ -97,8 +97,8 @@ class EndToEndPipelineTest {
 
     @Test
     fun `complete pipeline handles processing exceptions`() = runBlocking {
-        val pipeline = DataPipeline()
-        val failedRequests = mutableListOf<DataEvent>()
+        val pipeline = DataPipeline<UserRequest>()
+        val failedRequests = mutableListOf<DataEvent<UserRequest>>()
 
         pipeline.monitoringWrapper()
 
@@ -111,7 +111,7 @@ class EndToEndPipelineTest {
         }
 
         val request = UserRequest(userId = 123, action = "login")
-        val call = pipeline.executeRaw(request)
+        val call = pipeline.execute(DataEvent(request))
 
         assertTrue(call.isFailed())
         assertEquals("Database connection failed", call.getError())

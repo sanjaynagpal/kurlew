@@ -15,7 +15,7 @@ fun main() = runBlocking {
     println("=== Simple Data Pipeline==")
 
     // Create the pipeline
-    val pipeline = DataPipeline()
+    val pipeline = DataPipeline<UserRegistration>()
 
     // === Phase 1: Setup ===
     pipeline.intercept(DataPipelinePhases.Setup) {
@@ -40,7 +40,7 @@ fun main() = runBlocking {
 
     // === Phase 3: Features ===
     pipeline.validate("Invalid user data") { event ->
-        val userData = event.incomingData as? UserRegistration
+        val userData = event.incoming as? UserRegistration
         userData != null && userData.email.contains("@") && userData.age > 18
     }
 
@@ -55,7 +55,7 @@ fun main() = runBlocking {
     // Execute the main business logic
     pipeline.process { event, call ->
         println("[Process] Saving user to database")
-        val user = event.incomingData as UserRegistration
+        val user = event.incoming as UserRegistration
 
         // Simulate database save
         println("  - Saving user: ${user.email}")
@@ -85,7 +85,7 @@ fun main() = runBlocking {
         name = "Alice",
         age = 25,
     )
-    val x = pipeline.executeRaw(validUser)
+    val x = pipeline.execute(DataEvent(validUser))
 
     println("\n--- Processing Invalid User (underage) ---")
     val invalidUser = UserRegistration(
@@ -93,7 +93,7 @@ fun main() = runBlocking {
         age = 16,
         name = "Bob"
     )
-    val y = pipeline.executeRaw(invalidUser)
+    val y = pipeline.execute(DataEvent(invalidUser))
 }
 
 data class UserRegistration(
@@ -106,7 +106,7 @@ fun generateUserId(email: String): String {
     return "user_${email.hashCode().toString(16)}"
 }
 
-fun logFailedEvent(event: DataEvent, call: io.kurlew.pipeline.DataPipelineCall) {
-    println("  - DLQ Entry: ${event.incomingData}")
+fun logFailedEvent(event: DataEvent<UserRegistration>, call: io.kurlew.pipeline.DataPipelineCall) {
+    println("  - DLQ Entry: ${event.incoming}")
     println("  - Error: ${call.getError()}")
 }

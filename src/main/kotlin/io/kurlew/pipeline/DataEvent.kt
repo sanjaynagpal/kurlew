@@ -9,10 +9,10 @@ package io.kurlew.pipeline
  * Mutable state is stored in DataPipelineCall (the context), keeping the
  * subject immutable and thread-safe.
  */
-data class DataEvent(
+data class DataEvent<T>(
     /**
      * The immutable raw input acquired at the beginning of the pipeline.
      * This serves as the reliable, unaltered source of truth.
      */
-    val incomingData: Any
+    val incoming: T
 )

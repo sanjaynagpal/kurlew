@@ -28,8 +28,8 @@ fun main() = runBlocking {
 /**
  * Creates a pipeline configured for streaming data processing.
  */
-fun createStreamingPipeline(): DataPipeline {
-    val pipeline = DataPipeline()
+fun createStreamingPipeline(): DataPipeline<ChatMessage> {
+    val pipeline = DataPipeline<ChatMessage>()
 
     // Monitoring with timing
     pipeline.monitoringWrapper(
@@ -44,20 +44,20 @@ fun createStreamingPipeline(): DataPipeline {
 
     // Validation - filter out invalid messages early
     pipeline.validate { event ->
-        val message = event.incomingData as? ChatMessage
+        val message = event.incoming as? ChatMessage
         message != null && message.content.isNotBlank()
     }
 
     // Enrichment
     pipeline.enrich { event, call ->
-        val message = event.incomingData as ChatMessage
+        val message = event.incoming as ChatMessage
         call.enrich("processedAt", System.currentTimeMillis())
         call.enrich("contentLength", message.content.length)
     }
 
     // Processing - simulate slow I/O operation
     pipeline.process { event, call ->
-        val message = event.incomingData as ChatMessage
+        val message = event.incoming as ChatMessage
 
         // Simulate database write (slow operation)
         delay(500) // 500ms per message
@@ -104,7 +104,7 @@ fun simulateWebSocketStream(): Flow<ChatMessage> = flow {
  * automatically throttles the producer!
  */
 suspend fun processStreamWithBackpressure(
-    pipeline: DataPipeline,
+    pipeline: DataPipeline<ChatMessage>,
     stream: Flow<ChatMessage>
 ) {
     println("Starting stream processing...")
