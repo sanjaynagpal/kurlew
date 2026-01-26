@@ -12,14 +12,14 @@ repositories {
 
 dependencies {
     // Ktor Pipeline utilities
-    implementation("io.ktor:ktor-utils:2.3.7")
+    implementation("io.ktor:ktor-utils:3.3.3")
 
     // Kotlin coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 
     // Testing
     testImplementation(kotlin("test"))
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 
     // JUnit 5 for benchmarks
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.1")
